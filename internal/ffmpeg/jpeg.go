@@ -17,6 +17,24 @@ func JPEGWithQuery(b []byte, query url.Values) ([]byte, error) {
 	return transcode(b, args.String())
 }
 
+// JPEGWithQueryAndCodec transcodes H264/H265 frame data to JPEG.
+// When native transcoding is available (CGo build), it uses FFmpeg libraries directly.
+// Otherwise, it falls back to spawning the ffmpeg binary.
+func JPEGWithQueryAndCodec(b []byte, codecName string, query url.Values) ([]byte, error) {
+	// Try native transcoding first (no external ffmpeg binary needed)
+	if NativeTranscodingAvailable() {
+		result, err := JPEGWithQueryNative(b, codecName, query)
+		if err == nil {
+			return result, nil
+		}
+		// Fall through to ffmpeg binary on error
+	}
+
+	// Fallback to spawning ffmpeg binary
+	args := parseQuery(query)
+	return transcode(b, args.String())
+}
+
 func JPEGWithScale(b []byte, width, height int) ([]byte, error) {
 	args := defaultArgs()
 	args.AddFilter(fmt.Sprintf("scale=%d:%d", width, height))

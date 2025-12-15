@@ -27,6 +27,7 @@ require (
 )
 
 require (
+	github.com/asticode/go-astiav v0.39.0 // indirect
 	github.com/asticode/go-astikit v0.57.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/eclipse/paho.mqtt.golang v1.5.0 // indirect

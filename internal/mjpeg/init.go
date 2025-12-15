@@ -60,7 +60,8 @@ func handlerKeyframe(w http.ResponseWriter, r *http.Request) {
 	case core.CodecH264, core.CodecH265:
 		ts := time.Now()
 		var err error
-		if b, err = ffmpeg.JPEGWithQuery(b, r.URL.Query()); err != nil {
+		// Use the codec-aware function that tries native transcoding first
+		if b, err = ffmpeg.JPEGWithQueryAndCodec(b, cons.CodecName(), r.URL.Query()); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
