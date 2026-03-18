@@ -98,7 +98,17 @@ func apiStreams(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "DELETE":
+		// Remove from the registry first so no new connections can be made,
+		// then stop the stream to close existing RTSP source connections and
+		// any active WebRTC/HLS consumer sessions.
+		streamsMu.Lock()
+		stream := streams[src]
 		delete(streams, src)
+		streamsMu.Unlock()
+
+		if stream != nil {
+			stream.Stop()
+		}
 
 		if err := app.PatchConfig([]string{"streams", src}, nil); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
