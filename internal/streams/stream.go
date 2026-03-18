@@ -79,6 +79,32 @@ func (s *Stream) RemoveConsumer(cons core.Consumer) {
 	s.stopProducers()
 }
 
+// Stop forcibly terminates all consumers and producers for this stream.
+// Used when a stream is disabled so that existing WebRTC/HLS sessions and the
+// underlying RTSP source connection are immediately closed, not just removed
+// from the registry.
+func (s *Stream) Stop() {
+	// Snapshot and clear the consumer list under the lock so we can stop each
+	// consumer without holding the lock (consumer.Stop() may re-enter the stream).
+	s.mu.Lock()
+	consumers := make([]core.Consumer, len(s.consumers))
+	copy(consumers, s.consumers)
+	s.consumers = nil
+	s.mu.Unlock()
+
+	for _, consumer := range consumers {
+		_ = consumer.Stop()
+	}
+
+	// With consumers gone their track senders are removed, so stopProducers()
+	// will now find no active senders and will close the RTSP source.
+	s.mu.Lock()
+	for _, producer := range s.producers {
+		producer.stop()
+	}
+	s.mu.Unlock()
+}
+
 func (s *Stream) AddProducer(prod core.Producer) {
 	producer := &Producer{conn: prod, state: stateExternal, url: "external"}
 	s.mu.Lock()
