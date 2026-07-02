@@ -126,9 +126,20 @@ func Validate(source string) error {
 		if insecure[source[:i]] {
 			return errors.New("streams: source from insecure producer")
 		}
+		if source[:i] == "ffmpeg" {
+			if j := strings.IndexByte(source, '#'); j >= 0 {
+				query := ParseQuery(source[j+1:])
+				if query["raw"] != nil {
+					return errors.New("streams: ffmpeg raw params may be insecure")
+				}
+			}
+		}
 	}
 	if sanitize.MatchString(source) {
 		return errors.New("streams: source with spaces may be insecure")
+	}
+	if strings.IndexAny(source, `'"`) >= 0 {
+		return errors.New("streams: source with shell quotes may be insecure")
 	}
 	return nil
 }
