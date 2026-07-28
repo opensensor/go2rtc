@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +12,46 @@ import (
 	"github.com/AlexxIT/go2rtc/pkg/core"
 	"github.com/stretchr/testify/require"
 )
+
+type testProducer struct {
+	core.Connection
+}
+
+func (p *testProducer) Start() error {
+	return nil
+}
+
+func resetStreamsForTest(t *testing.T) {
+	t.Helper()
+
+	streamsMu.Lock()
+	prevStreams := streams
+	streams = map[string]*Stream{}
+	streamsMu.Unlock()
+
+	t.Cleanup(func() {
+		streamsMu.Lock()
+		streams = prevStreams
+		streamsMu.Unlock()
+	})
+}
+
+func registerProducerForTest(t *testing.T, scheme string) {
+	t.Helper()
+
+	prevHandler, hadHandler := handlers[scheme]
+	HandleFunc(scheme, func(url string) (core.Producer, error) {
+		return &testProducer{}, nil
+	})
+
+	t.Cleanup(func() {
+		if hadHandler {
+			handlers[scheme] = prevHandler
+		} else {
+			delete(handlers, scheme)
+		}
+	})
+}
 
 func TestApiSchemes(t *testing.T) {
 	SetReady()
@@ -112,4 +153,54 @@ func TestApiSchemesWaitsForReady(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &schemes)
 	require.NoError(t, err)
 	require.Contains(t, schemes, "waittest")
+}
+
+func TestApiReload(t *testing.T) {
+	resetStreamsForTest(t)
+
+	streamsMu.Lock()
+	streams["front_door"] = NewStream("rtsp://example.local/live")
+	streamsMu.Unlock()
+
+	req := httptest.NewRequest("POST", "/api/reload?src=front_door", nil)
+	w := httptest.NewRecorder()
+
+	apiReload(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	require.NotNil(t, Get("front_door"), "reload must keep stream registered")
+
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "front_door", body["src"])
+	require.Equal(t, "reloaded", body["status"])
+	require.Equal(t, []string{"rtsp://example.local/live"}, Get("front_door").Sources())
+}
+
+func TestApiReloadErrors(t *testing.T) {
+	resetStreamsForTest(t)
+
+	tests := []struct {
+		name string
+		req  string
+		code int
+	}{
+		{name: "method not allowed", req: "GET /api/reload?src=front_door", code: http.StatusMethodNotAllowed},
+		{name: "missing source", req: "POST /api/reload", code: http.StatusBadRequest},
+		{name: "not found", req: "POST /api/reload?src=missing", code: http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			method, target, ok := strings.Cut(tt.req, " ")
+			require.True(t, ok)
+			req := httptest.NewRequest(method, target, nil)
+			w := httptest.NewRecorder()
+
+			apiReload(w, req)
+
+			require.Equal(t, tt.code, w.Code)
+		})
+	}
 }

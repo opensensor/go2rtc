@@ -200,6 +200,36 @@ func apiPreload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func apiReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if api.IsReadOnly() {
+		api.ReadOnlyError(w)
+		return
+	}
+
+	src := r.URL.Query().Get("src")
+	if src == "" {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+
+	stream := Get(src)
+	if stream == nil {
+		http.Error(w, "", http.StatusNotFound)
+		return
+	}
+
+	stream.Stop()
+	api.ResponseJSON(w, map[string]string{
+		"src":    src,
+		"status": "reloaded",
+	})
+}
+
 func apiSchemes(w http.ResponseWriter, r *http.Request) {
 	// Wait until all module Init() calls finish in main.
 	WaitReady()

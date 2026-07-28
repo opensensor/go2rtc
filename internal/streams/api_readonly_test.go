@@ -66,3 +66,19 @@ func TestApiPreloadReadOnly(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 	})
 }
+
+func TestApiReloadReadOnly(t *testing.T) {
+	prevReadOnly := api.ReadOnly
+	t.Cleanup(func() {
+		api.ReadOnly = prevReadOnly
+	})
+
+	api.ReadOnly = true
+
+	req := httptest.NewRequest("POST", "/api/reload?src=test", nil)
+	w := httptest.NewRecorder()
+
+	apiReload(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+}
