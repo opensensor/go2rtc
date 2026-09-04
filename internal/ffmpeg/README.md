@@ -49,6 +49,7 @@ ffmpeg:
 - You can use `video` and `audio` params multiple times (ex. `#video=copy#audio=copy#audio=pcmu`)
 - You can use `rotate` param with `90`, `180`, `270` or `-90` values, important with transcoding (ex. `#video=h264#rotate=90`)
 - You can use `width` and/or `height` params, important with transcoding (ex. `#video=h264#width=1280`)
+- You can use `framerate` with HTTP JPEG/MJPEG inputs that don't provide timestamps (ex. `#framerate=5#video=h264`)
 - You can use `drawtext` to add a timestamp (ex. `drawtext=x=2:y=2:fontsize=12:fontcolor=white:box=1:boxcolor=black`)
     - This will greatly increase the CPU of the server, even with hardware acceleration
 - You can use `timeout` param to set RTSP input timeout in seconds (ex. `#timeout=10`)

@@ -99,6 +99,21 @@ func TestParseArgsIpCam(t *testing.T) {
 			expect: `ffmpeg -hide_banner -fflags nobuffer -flags low_delay -i http://example.com -c:v libx264 -g 50 -profile:v high -level:v 4.1 -preset:v superfast -tune:v zerolatency -pix_fmt:v yuv420p -an -user_agent ffmpeg/go2rtc -rtsp_transport tcp -f rtsp {output}`,
 		},
 		{
+			name:   "[HTTP-MJPEG] input framerate generates the correct timestamps",
+			source: "http://example.com#framerate=5#video=h264",
+			expect: `ffmpeg -hide_banner -r 5 -fflags nobuffer -flags low_delay -i http://example.com -c:v libx264 -g 50 -profile:v high -level:v 4.1 -preset:v superfast -tune:v zerolatency -pix_fmt:v yuv420p -an -user_agent ffmpeg/go2rtc -rtsp_transport tcp -f rtsp {output}`,
+		},
+		{
+			name:   "[HTTP-MJPEG] rational input framerate is supported",
+			source: "http://example.com#framerate=30000/1001#video=h264",
+			expect: `ffmpeg -hide_banner -r 30000/1001 -fflags nobuffer -flags low_delay -i http://example.com -c:v libx264 -g 50 -profile:v high -level:v 4.1 -preset:v superfast -tune:v zerolatency -pix_fmt:v yuv420p -an -user_agent ffmpeg/go2rtc -rtsp_transport tcp -f rtsp {output}`,
+		},
+		{
+			name:   "[HTTP-MJPEG] invalid input framerate is ignored",
+			source: "http://example.com#framerate=5%20-an#video=h264",
+			expect: `ffmpeg -hide_banner -fflags nobuffer -flags low_delay -i http://example.com -c:v libx264 -g 50 -profile:v high -level:v 4.1 -preset:v superfast -tune:v zerolatency -pix_fmt:v yuv420p -an -user_agent ffmpeg/go2rtc -rtsp_transport tcp -f rtsp {output}`,
+		},
+		{
 			name:   "[HLS] video will be copied, audio will be skipped",
 			source: "https://example.com#video=copy",
 			expect: `ffmpeg -hide_banner -fflags nobuffer -flags low_delay -i https://example.com -c:v copy -an -user_agent ffmpeg/go2rtc -rtsp_transport tcp -f rtsp {output}`,
