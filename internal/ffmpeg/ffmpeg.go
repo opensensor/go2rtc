@@ -1,7 +1,9 @@
 package ffmpeg
 
 import (
+	"math"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/AlexxIT/go2rtc/internal/api"
@@ -179,6 +181,18 @@ func inputTemplate(name, s string, query url.Values) string {
 	return strings.Replace(template, "{input}", s, 1)
 }
 
+func validFrameRate(s string) bool {
+	if strings.Count(s, "/") == 1 {
+		parts := strings.SplitN(s, "/", 2)
+		num, errNum := strconv.ParseUint(parts[0], 10, 64)
+		den, errDen := strconv.ParseUint(parts[1], 10, 64)
+		return errNum == nil && errDen == nil && num > 0 && den > 0
+	}
+
+	rate, err := strconv.ParseFloat(s, 64)
+	return err == nil && rate > 0 && !math.IsInf(rate, 0) && !math.IsNaN(rate)
+}
+
 func parseArgs(s string) *ffmpeg.Args {
 	// init FFmpeg arguments
 	args := &ffmpeg.Args{
@@ -205,6 +219,13 @@ func parseArgs(s string) *ffmpeg.Args {
 		switch s[:i] {
 		case "http", "https", "rtmp":
 			args.Input = inputTemplate("http", s, query)
+			// HTTP JPEG/MJPEG streams often don't carry timestamps. FFmpeg then
+			// assumes 25 fps, which compresses the output timeline when frames
+			// actually arrive at a lower rate. Input-side -r generates timestamps
+			// at the configured rate before the video is transcoded.
+			if frameRate := query.Get("framerate"); validFrameRate(frameRate) {
+				args.Input = "-r " + frameRate + " " + args.Input
+			}
 		case "rtsp", "rtsps":
 			// https://ffmpeg.org/ffmpeg-protocols.html#rtsp
 			// skip unnecessary input tracks
