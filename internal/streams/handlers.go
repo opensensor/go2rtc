@@ -48,6 +48,17 @@ func HasProducer(url string) bool {
 }
 
 func GetProducer(url string) (core.Producer, error) {
+	return getProducer(url, 0)
+}
+
+func getProducer(url string, depth int) (core.Producer, error) {
+	if depth >= 10 {
+		return nil, errors.New("streams: too many redirects")
+	}
+	// Every dispatch, including redirect results, crosses the same boundary.
+	if err := Validate(url); err != nil {
+		return nil, err
+	}
 	if i := strings.IndexByte(url, ':'); i > 0 {
 		scheme := url[:i]
 
@@ -57,7 +68,7 @@ func GetProducer(url string) (core.Producer, error) {
 				return nil, err
 			}
 			if location != "" {
-				return GetProducer(location)
+				return getProducer(location, depth+1)
 			}
 		}
 
@@ -112,10 +123,19 @@ func GetConsumer(url string) (core.Consumer, func(), error) {
 	return nil, nil, errors.New("streams: unsupported scheme: " + url)
 }
 
-var insecure = map[string]bool{}
+// Config streams are loaded before module Init functions register handlers.
+var insecure = map[string]bool{"exec": true, "echo": true, "expr": true}
 
 func MarkInsecure(scheme string) {
 	insecure[scheme] = true
+}
+
+// Validators are registered during Go package initialization, before config
+// loading or API listeners can accept sources.
+var validators = map[string]func(string) error{}
+
+func HandleValidator(scheme string, validate func(string) error) {
+	validators[scheme] = validate
 }
 
 var sanitize = regexp.MustCompile(`\s`)
@@ -138,8 +158,13 @@ func Validate(source string) error {
 	if sanitize.MatchString(source) {
 		return errors.New("streams: source with spaces may be insecure")
 	}
-	if strings.IndexAny(source, `'"`) >= 0 {
+	if strings.IndexAny(source, "\x00"+`'"`) >= 0 {
 		return errors.New("streams: source with shell quotes may be insecure")
+	}
+	if i := strings.IndexByte(source, ':'); i > 0 {
+		if validate := validators[source[:i]]; validate != nil {
+			return validate(source)
+		}
 	}
 	return nil
 }

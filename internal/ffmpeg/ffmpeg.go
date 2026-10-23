@@ -1,11 +1,16 @@
 package ffmpeg
 
 import (
+	"errors"
+	"math"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/AlexxIT/go2rtc/internal/api"
 	"github.com/AlexxIT/go2rtc/internal/app"
+	"github.com/AlexxIT/go2rtc/internal/exec"
 	"github.com/AlexxIT/go2rtc/internal/ffmpeg/device"
 	"github.com/AlexxIT/go2rtc/internal/ffmpeg/hardware"
 	"github.com/AlexxIT/go2rtc/internal/ffmpeg/virtual"
@@ -15,6 +20,10 @@ import (
 	"github.com/AlexxIT/go2rtc/pkg/ffmpeg"
 	"github.com/rs/zerolog"
 )
+
+func init() {
+	streams.HandleValidator("ffmpeg", func(source string) error { return validateSource(source[7:]) })
+}
 
 func Init() {
 	var cfg struct {
@@ -38,18 +47,7 @@ func Init() {
 	}
 	defaults["global"] += " -v " + cfg.Log.Level
 
-	streams.RedirectFunc("ffmpeg", func(url string) (string, error) {
-		if _, err := Version(); err != nil {
-			return "", err
-		}
-		args := parseArgs(url[7:])
-		if core.Contains(args.Codecs, "auto") {
-			return "", nil // force call streams.HandleFunc("ffmpeg")
-		}
-		return "exec:" + args.String(), nil
-	})
-
-	streams.HandleFunc("ffmpeg", NewProducer)
+	streams.HandleFunc("ffmpeg", streamProducer)
 
 	api.HandleFunc("api/ffmpeg", apiFFmpeg)
 
@@ -179,7 +177,23 @@ func inputTemplate(name, s string, query url.Values) string {
 	return strings.Replace(template, "{input}", s, 1)
 }
 
+func validFrameRate(s string) bool {
+	if strings.Count(s, "/") == 1 {
+		parts := strings.SplitN(s, "/", 2)
+		num, errNum := strconv.ParseUint(parts[0], 10, 64)
+		den, errDen := strconv.ParseUint(parts[1], 10, 64)
+		return errNum == nil && errDen == nil && num > 0 && den > 0
+	}
+
+	rate, err := strconv.ParseFloat(s, 64)
+	return err == nil && rate > 0 && !math.IsInf(rate, 0) && !math.IsNaN(rate)
+}
+
 func parseArgs(s string) *ffmpeg.Args {
+	return parseArgsMode(s, false)
+}
+
+func parseArgsMode(s string, streamOnly bool) *ffmpeg.Args {
 	// init FFmpeg arguments
 	args := &ffmpeg.Args{
 		Bin:     defaults["bin"],
@@ -204,7 +218,15 @@ func parseArgs(s string) *ffmpeg.Args {
 	if i := strings.Index(s, "://"); i > 0 {
 		switch s[:i] {
 		case "http", "https", "rtmp":
-			args.Input = inputTemplate("http", s, query)
+			args.Input = inputTemplate("http", "{input}", query)
+			args.InputValue = s
+			// HTTP JPEG/MJPEG streams often don't carry timestamps. FFmpeg then
+			// assumes 25 fps, which compresses the output timeline when frames
+			// actually arrive at a lower rate. Input-side -r generates timestamps
+			// at the configured rate before the video is transcoded.
+			if frameRate := query.Get("framerate"); validFrameRate(frameRate) {
+				args.Input = "-r " + frameRate + " " + args.Input
+			}
 		case "rtsp", "rtsps":
 			// https://ffmpeg.org/ffmpeg-protocols.html#rtsp
 			// skip unnecessary input tracks
@@ -217,11 +239,13 @@ func parseArgs(s string) *ffmpeg.Args {
 				args.Input = "-allowed_media_types audio "
 			}
 
-			args.Input += inputTemplate("rtsp", s, query)
+			args.Input += inputTemplate("rtsp", "{input}", query)
+			args.InputValue = s
 		default:
-			args.Input = "-i " + s
+			args.Input = "-i {input}"
+			args.InputValue = s
 		}
-	} else if streams.Get(s) != nil {
+	} else if (streamOnly && streamName.MatchString(s)) || streams.Get(s) != nil {
 		s = "rtsp://127.0.0.1:" + rtsp.Port + "/" + s
 		switch {
 		case args.Video > 0 && args.Audio == 0:
@@ -235,7 +259,8 @@ func parseArgs(s string) *ffmpeg.Args {
 		for _, v := range query["query"] {
 			s += "&" + v
 		}
-		args.Input = inputTemplate("rtsp", s, query)
+		args.Input = inputTemplate("rtsp", "{input}", query)
+		args.InputValue = s
 	} else if i = strings.Index(s, "?"); i > 0 {
 		switch s[:i] {
 		case "device":
@@ -246,7 +271,8 @@ func parseArgs(s string) *ffmpeg.Args {
 			args.Input = virtual.GetInputTTS(s[i+1:])
 		}
 	} else {
-		args.Input = inputTemplate("file", s, query)
+		args.Input = inputTemplate("file", "{input}", query)
+		args.InputValue = s
 	}
 
 	if query["async"] != nil {
@@ -386,3 +412,121 @@ func parseArgs(s string) *ffmpeg.Args {
 
 	return args
 }
+
+func streamProducer(source string) (core.Producer, error) {
+	if err := streams.Validate(source); err != nil {
+		return nil, err
+	}
+	if _, err := Version(); err != nil {
+		return nil, err
+	}
+	// Treat bare names as RTSP references even if registration changes while
+	// building the command. They must never fall back to local file input.
+	args := parseArgsMode(source[7:], true)
+	if core.Contains(args.Codecs, "auto") {
+		return NewProducer(source)
+	}
+	return exec.NewProducer(source, args.Argv())
+}
+
+var streamName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+var positiveNumber = regexp.MustCompile(`^[0-9]+$`)
+var bitrateValue = regexp.MustCompile(`^[0-9]+[kKmM]?$`)
+
+// API and config sources may select known presets, not supply command fragments
+// or arbitrary FFmpeg protocols (which can read/write local files).
+func validateSource(source string) error {
+	input, params, _ := strings.Cut(source, "#")
+	if strings.HasPrefix(input, "virtual?") {
+		if err := validateVirtual(strings.TrimPrefix(input, "virtual?")); err != nil {
+			return err
+		}
+	} else if !streamName.MatchString(input) {
+		u, err := url.Parse(input)
+		if err != nil || u.Host == "" {
+			return errors.New("ffmpeg: expected network URL or stream name")
+		}
+		switch u.Scheme {
+		case "http", "https", "rtsp", "rtsps", "rtmp":
+		default:
+			return errors.New("ffmpeg: unsupported input protocol")
+		}
+	}
+	for key, values := range streams.ParseQuery(params) {
+		for _, value := range values {
+			valid := false
+			switch key {
+			case "video", "audio":
+				prefix := "-c:v "
+				if key == "audio" {
+					prefix = "-c:a "
+				}
+				valid = value == "copy" || (key == "audio" && value == "auto") ||
+					strings.HasPrefix(defaults[value], prefix) ||
+					strings.HasPrefix(defaults[value], strings.Replace(prefix, "-c:", "-codec:", 1))
+			case "input":
+				valid = value == "http" || value == "rtsp" || value == "rtsp/udp"
+			case "width", "height", "timeout":
+				valid = positiveNumber.MatchString(value)
+			case "bitrate":
+				valid = bitrateValue.MatchString(value)
+			case "framerate":
+				valid = validFrameRate(value)
+			case "rotate":
+				valid = value == "90" || value == "180" || value == "270" || value == "-90"
+			case "hardware":
+				valid = value == "" || value == "software" || value == "vaapi" || value == "cuda" || value == "dxva2" || value == "videotoolbox" || value == "rkmpp" || value == "v4l2m2m"
+			case "async":
+				valid = value == "" || value == "1"
+			}
+			if !valid {
+				return errors.New("ffmpeg: unsupported source parameter: " + key)
+			}
+		}
+	}
+	return nil
+}
+
+// Synthetic test patterns remain available, but arbitrary lavfi graphs and
+// percent-encoded command fragments are not accepted as virtual inputs.
+func validateVirtual(rawQuery string) error {
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return err
+	}
+	if len(query["video"]) != 1 {
+		return errors.New("ffmpeg: expected one virtual video pattern")
+	}
+	for key, values := range query {
+		if len(values) != 1 {
+			return errors.New("ffmpeg: duplicate virtual parameter")
+		}
+		value := values[0]
+		valid := false
+		switch key {
+		case "video":
+			valid = value == "" || value == "testsrc" || value == "testsrc2" || value == "smptebars" || value == "color" || value == "mandelbrot"
+		case "size":
+			valid = virtualSize.MatchString(value) || value == "720" || value == "1080" || value == "2K" || value == "4K" || value == "8K"
+		case "color":
+			valid = virtualColor.MatchString(value)
+		case "rate", "duration":
+			valid = validFrameRate(value)
+		case "sar":
+			valid = virtualRatio.MatchString(value)
+		case "decimals":
+			valid = positiveNumber.MatchString(value)
+		case "format":
+			valid = value == "yuv420p" || value == "yuv422p" || value == "yuv444p" || value == "rgb24" || value == "gray"
+		}
+		if !valid {
+			return errors.New("ffmpeg: unsupported virtual parameter: " + key)
+		}
+	}
+	return nil
+}
+
+var virtualSize = regexp.MustCompile(`^[0-9]+x[0-9]+$`)
+var virtualColor = regexp.MustCompile(`^[A-Za-z]+$|^0x[0-9A-Fa-f]{6}$`)
+var virtualRatio = regexp.MustCompile(`^[0-9]+/[0-9]+$`)
