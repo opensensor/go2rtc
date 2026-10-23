@@ -67,21 +67,33 @@ func execHandle(rawURL string) (prod core.Producer, err error) {
 	rawURL, rawQuery, _ := strings.Cut(rawURL, "#")
 	query := streams.ParseQuery(rawQuery)
 
-	var path string
+	return newProducer(rawURL, shell.QuoteSplit(rawURL[5:]), query)
+}
 
-	// RTSP flow should have `{output}` inside URL
-	// pipe flow may have `#{params}` inside URL
-	if i := strings.Index(rawURL, "{output}"); i > 0 {
+// NewProducer runs an argument vector built by a trusted module. It is not a
+// stream scheme and cannot be reached through an exec: redirect.
+func NewProducer(source string, args []string) (core.Producer, error) {
+	return newProducer(source, args, nil)
+}
+
+func newProducer(source string, args []string, query url.Values) (prod core.Producer, err error) {
+	if len(args) == 0 {
+		return nil, errors.New("exec: empty command")
+	}
+	args = slices.Clone(args)
+	var path string
+	for i, arg := range args {
+		if arg != "{output}" {
+			continue
+		}
 		if rtsp.Port == "" {
 			return nil, errors.New("exec: rtsp module disabled")
 		}
-
-		sum := md5.Sum([]byte(rawURL))
+		sum := md5.Sum([]byte(source))
 		path = "/" + hex.EncodeToString(sum[:])
-		rawURL = rawURL[:i] + "rtsp://127.0.0.1:" + rtsp.Port + path + rawURL[i+8:]
+		args[i] = "rtsp://127.0.0.1:" + rtsp.Port + path
 	}
-
-	cmd := shell.NewCommand(rawURL[5:]) // remove `exec:`
+	cmd := shell.NewCommandArgs(args)
 	cmd.Stderr = &logWriter{
 		buf:   make([]byte, 512),
 		debug: log.Debug().Enabled(),
@@ -116,9 +128,9 @@ func execHandle(rawURL string) (prod core.Producer, err error) {
 	}
 
 	if path == "" {
-		prod, err = handlePipe(rawURL, cmd)
+		prod, err = handlePipe(source, cmd)
 	} else {
-		prod, err = handleRTSP(rawURL, cmd, path, timeout)
+		prod, err = handleRTSP(source, cmd, path, timeout)
 	}
 
 	if err != nil {

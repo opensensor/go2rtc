@@ -39,7 +39,7 @@ func Init() {
 	}
 
 	// default config
-	cfg.Mod.Listen = ":1984"
+	cfg.Mod.Listen = "127.0.0.1:1984"
 
 	// load config from YAML
 	app.LoadConfig(&cfg)
@@ -58,9 +58,9 @@ func Init() {
 	initStatic(cfg.Mod.StaticDir)
 
 	HandleFunc("api", apiHandler)
-	HandleFunc("api/config", configHandler)
-	HandleFunc("api/exit", exitHandler)
-	HandleFunc("api/restart", restartHandler)
+	HandleFunc("api/config", requireAdmin(cfg.Mod.Username, cfg.Mod.Password, configHandler))
+	HandleFunc("api/exit", requireAdmin(cfg.Mod.Username, cfg.Mod.Password, exitHandler))
+	HandleFunc("api/restart", requireAdmin(cfg.Mod.Username, cfg.Mod.Password, restartHandler))
 	HandleFunc("api/log", logHandler)
 
 	Handler = http.DefaultServeMux // 4th
@@ -356,4 +356,22 @@ func Error(w http.ResponseWriter, err error) {
 	log.Error().Err(err).Caller(1).Send()
 
 	http.Error(w, err.Error(), http.StatusInsufficientStorage)
+}
+
+// Administrative endpoints never inherit the loopback/OPTIONS auth exemption.
+// With no credentials configured, they are disabled rather than public.
+func requireAdmin(username, password string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if username == "" || password == "" {
+			http.Error(w, "Administrative API disabled: configure credentials", http.StatusForbidden)
+			return
+		}
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != username || pass != password {
+			w.Header().Set("WWW-Authenticate", `Basic realm="go2rtc"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }

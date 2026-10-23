@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strconv"
 	"strings"
+
+	"github.com/AlexxIT/go2rtc/pkg/shell"
 )
 
 // correlation of libavformat versions with ffmpeg versions
@@ -16,13 +18,14 @@ const (
 )
 
 type Args struct {
-	Bin     string   // ffmpeg
-	Global  string   // -hide_banner -v error
-	Input   string   // -re -stream_loop -1 -i /media/bunny.mp4
-	Codecs  []string // -c:v libx264 -g:v 30 -preset:v ultrafast -tune:v zerolatency
-	Filters []string // scale=1920:1080
-	Output  string   // -f rtsp {output}
-	Version string   // libavformat version, it's more reliable than the ffmpeg version
+	InputValue string   // substituted only after tokenizing trusted input templates
+	Bin        string   // ffmpeg
+	Global     string   // -hide_banner -v error
+	Input      string   // -re -stream_loop -1 -i /media/bunny.mp4
+	Codecs     []string // -c:v libx264 -g:v 30 -preset:v ultrafast -tune:v zerolatency
+	Filters    []string // scale=1920:1080
+	Output     string   // -f rtsp {output}
+	Version    string   // libavformat version, it's more reliable than the ffmpeg version
 
 	Video, Audio int // count of Video and Audio params
 }
@@ -67,7 +70,7 @@ func (a *Args) String() string {
 	if strings.HasPrefix(a.Input, "-re ") && a.Version >= Version61 {
 		b.WriteString("-readrate_initial_burst 0.001 ")
 	}
-	b.WriteString(a.Input)
+	b.WriteString(strings.ReplaceAll(a.Input, "{input}", a.InputValue))
 
 	multimode := a.Video > 1 || a.Audio > 1
 	var iv, ia int
@@ -120,4 +123,36 @@ func ParseVersion(b []byte) (ffmpeg string, libavformat string) {
 		}
 	}
 	return
+}
+
+// Argv preserves data argument boundaries; filter expressions and input URLs
+// are never assembled into a command string and split again.
+func (a *Args) Argv() []string {
+	args := []string{a.Bin}
+	args = append(args, shell.QuoteSplit(a.Global)...)
+	if strings.HasPrefix(a.Input, "-re ") && a.Version >= Version61 {
+		args = append(args, "-readrate_initial_burst", "0.001")
+	}
+	for _, arg := range shell.QuoteSplit(a.Input) {
+		args = append(args, strings.ReplaceAll(arg, "{input}", a.InputValue))
+	}
+	multimode := a.Video > 1 || a.Audio > 1
+	var iv, ia int
+	for _, codec := range a.Codecs {
+		if multimode && len(codec) >= 5 {
+			switch codec[:5] {
+			case "-c:v ":
+				codec = "-map 0:v:0? " + strings.ReplaceAll(codec, ":v ", ":v:"+strconv.Itoa(iv)+" ")
+				iv++
+			case "-c:a ":
+				codec = "-map 0:a:0? " + strings.ReplaceAll(codec, ":a ", ":a:"+strconv.Itoa(ia)+" ")
+				ia++
+			}
+		}
+		args = append(args, shell.QuoteSplit(codec)...)
+	}
+	if len(a.Filters) > 0 {
+		args = append(args, "-vf", strings.Join(a.Filters, ","))
+	}
+	return append(args, shell.QuoteSplit(a.Output)...)
 }

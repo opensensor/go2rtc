@@ -21,7 +21,7 @@ func TestValidateAllowsCommonFFmpegParams(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestNewStreamAllowsTrustedConfigRawFFmpeg(t *testing.T) {
-	stream := NewStream(`ffmpeg:rtsp://127.0.0.1:8554/testsrc#raw="-i""file:///tmp/config_input"`)
-	require.Equal(t, []string{`ffmpeg:rtsp://127.0.0.1:8554/testsrc#raw="-i""file:///tmp/config_input"`}, stream.Sources())
+func TestConfigRejectsRawFFmpeg(t *testing.T) {
+	_, err := configStream(`ffmpeg:rtsp://127.0.0.1:8554/testsrc#raw="-i""file:///tmp/config_input"`)
+	require.Error(t, err)
 }
