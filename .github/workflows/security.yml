@@ -13,14 +13,25 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.3'
           cache: true
       - run: go mod download
       - run: go mod verify
-      - run: go test -timeout 120s ./...
+      - run: python3 scripts/compare-test-baseline.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: go-tests-baseline-and-candidate
+          path: '*-tests.jsonl'
       - run: go build -trimpath -o /tmp/go2rtc .
+        if: always()
       - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+        if: always()
       - run: govulncheck ./...
+        if: always()
       - run: govulncheck -mode=binary /tmp/go2rtc
+        if: always()
