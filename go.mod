@@ -24,7 +24,7 @@ require (
 	github.com/skrashevich/go-webp v0.1.0
 	github.com/stretchr/testify v1.12.0
 	github.com/tadglines/go-pkgs v0.0.0-20210623144937-b983b20f54f9
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
 	golang.org/x/net v0.62.0
 	gopkg.in/yaml.v3 v3.0.1
 )
