@@ -67,6 +67,7 @@ func do(req *http.Request) (core.Producer, error) {
 	}
 
 	if res.StatusCode != http.StatusOK {
+		tcp.Close(res)
 		return nil, errors.New(res.Status)
 	}
 
