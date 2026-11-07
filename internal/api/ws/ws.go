@@ -11,7 +11,8 @@ import (
 
 	"github.com/AlexxIT/go2rtc/internal/api"
 	"github.com/AlexxIT/go2rtc/internal/app"
-	"github.com/AlexxIT/go2rtc/pkg/core"
+	"github.com/AlexxIT/go2rtc/internal/mediaauth"
+	"github.com/AlexxIT/go2rtc/pkg/creds"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 )
@@ -100,7 +101,16 @@ func initWS(origin string) {
 }
 
 func apiWS(w http.ResponseWriter, r *http.Request) {
-	ws, err := wsUp.Upgrade(w, r, nil)
+	lease, err := mediaauth.Acquire(r)
+	if err != nil {
+		http.Error(w, "Media authority denied", http.StatusForbidden)
+		return
+	}
+	headers := http.Header{}
+	if lease != nil {
+		headers.Set(mediaauth.PolicyHeader, "1")
+	}
+	ws, err := wsUp.Upgrade(w, r, headers)
 	if err != nil {
 		origin := r.Header.Get("Origin")
 		log.Error().Err(err).Caller().Msgf("host=%s origin=%s", r.Host, origin)
@@ -108,6 +118,8 @@ func apiWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tr := &Transport{Request: r}
+	stopLease := lease.Watch(func() { _ = ws.Close() })
+	defer stopLease()
 	tr.OnWrite(func(msg any) error {
 		_ = ws.SetWriteDeadline(time.Now().Add(time.Second * 5))
 
@@ -130,10 +142,18 @@ func apiWS(w http.ResponseWriter, r *http.Request) {
 
 		log.Trace().Str("type", msg.Type).Msg("[api] ws msg")
 
+		if lease != nil {
+			switch msg.Type {
+			case "webrtc", "webrtc/offer", "webrtc/candidate", "mse", "mp4":
+			default:
+				tr.Write(&Message{Type: "error", Value: "Unsupported managed media operation"})
+				continue
+			}
+		}
 		if handler := wsHandlers[msg.Type]; handler != nil {
 			go func() {
-				if err = handler(tr, msg); err != nil {
-					errMsg := core.StripUserinfo(err.Error())
+				if err := handler(tr, msg); err != nil {
+					errMsg := creds.SecretString(err.Error())
 					tr.Write(&Message{Type: "error", Value: msg.Type + ": " + errMsg})
 				}
 			}()

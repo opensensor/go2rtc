@@ -24,9 +24,12 @@ import (
 	"github.com/AlexxIT/go2rtc/internal/http"
 	"github.com/AlexxIT/go2rtc/internal/isapi"
 	"github.com/AlexxIT/go2rtc/internal/ivideon"
+	"github.com/AlexxIT/go2rtc/internal/kasa"
 	"github.com/AlexxIT/go2rtc/internal/mjpeg"
 	"github.com/AlexxIT/go2rtc/internal/mp4"
-	"github.com/AlexxIT/go2rtc/internal/mpegts"
+	"github.com/AlexxIT/go2rtc/internal/webp"
+	"github.com/AlexxIT/go2rtc/internal/mpeg"
+	"github.com/AlexxIT/go2rtc/internal/multitrans"
 	"github.com/AlexxIT/go2rtc/internal/nest"
 	"github.com/AlexxIT/go2rtc/internal/ngrok"
 	"github.com/AlexxIT/go2rtc/internal/onvif"
@@ -40,15 +43,19 @@ import (
 	"github.com/AlexxIT/go2rtc/internal/tapo"
 	"github.com/AlexxIT/go2rtc/internal/tuya"
 	"github.com/AlexxIT/go2rtc/internal/v4l2"
+	"github.com/AlexxIT/go2rtc/internal/webcodecs"
 	"github.com/AlexxIT/go2rtc/internal/webrtc"
 	"github.com/AlexxIT/go2rtc/internal/webtorrent"
 	"github.com/AlexxIT/go2rtc/internal/wyoming"
+	"github.com/AlexxIT/go2rtc/internal/wyze"
+	"github.com/AlexxIT/go2rtc/internal/xiaomi"
 	"github.com/AlexxIT/go2rtc/internal/yandex"
 	"github.com/AlexxIT/go2rtc/pkg/shell"
 )
 
 func main() {
-	app.Version = "1.9.12"
+	// version will be set later from -buildvcs info, this used only as fallback
+	app.Version = "1.9.14"
 
 	type module struct {
 		name string
@@ -66,8 +73,10 @@ func main() {
 		{"webrtc", webrtc.Init}, // webrtc source, WebRTC server
 		// Main API
 		{"mp4", mp4.Init},     // MP4 API
+		{"webcodecs", webcodecs.Init}, // WebCodecs API
 		{"hls", hls.Init},     // HLS API
 		{"mjpeg", mjpeg.Init}, // MJPEG API
+		{"webp", webp.Init},   // WebP API
 		// Other sources and servers
 		{"hass", hass.Init},             // hass source, Hass API server
 		{"homekit", homekit.Init},       // homekit source, HomeKit server
@@ -92,12 +101,16 @@ func main() {
 		{"gopro", gopro.Init},
 		{"isapi", isapi.Init},
 		{"ivideon", ivideon.Init},
-		{"mpegts", mpegts.Init},
+		{"kasa", kasa.Init},
+		{"mpegts", mpeg.Init},
+		{"multitrans", multitrans.Init},
 		{"nest", nest.Init},
 		{"ring", ring.Init},
 		{"roborock", roborock.Init},
 		{"tapo", tapo.Init},
 		{"tuya", tuya.Init},
+		{"wyze", wyze.Init},
+		{"xiaomi", xiaomi.Init},
 		{"yandex", yandex.Init},
 		// Helper modules
 		{"debug", debug.Init},
@@ -111,6 +124,8 @@ func main() {
 			m.init()
 		}
 	}
+
+	streams.SetReady()
 
 	shell.RunUntilSignal()
 }

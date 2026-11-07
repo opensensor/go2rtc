@@ -6,20 +6,34 @@
     <title>add - go2rtc</title>
     <style>
         main > button {
-            background-color: #444;
-            color: white;
+            background: var(--bg-card);
+            color: var(--text-primary);
             cursor: pointer;
-            padding: 14px;
+            padding: 12px 16px;
             width: 100%;
-            border: none;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
             text-align: left;
-            font-size: 16px;
-            font-weight: bold;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: inherit;
+            margin-bottom: 4px;
+            transition: border-color 0.15s;
+        }
+
+        main > button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
         }
 
         main > div {
             display: none;
-            gap: 10px;
+            gap: 8px;
+            margin-bottom: 8px;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
         }
     </style>
 </head>
@@ -52,8 +66,24 @@
         drawTable(table, await r.json());
     }
 </script>
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        if (!window.go2rtcReady) return;
+        window.go2rtcReady.then(data => {
+            if (!data || !data.read_only) return;
+            const banner = document.getElementById('readonly-banner');
+            if (banner) banner.style.display = 'block';
+            document.querySelectorAll('main input, main select, main button, main textarea').forEach(el => {
+                el.disabled = true;
+            });
+        });
+    });
+</script>
 
 <main>
+    <div id="readonly-banner" style="display: none; padding: 10px; background: var(--bg-card); border: 1px solid var(--red); border-radius: 6px; color: var(--red); margin-bottom: 12px;">
+        Read-only mode: add actions are disabled.
+    </div>
     <button id="stream">Temporary stream</button>
     <div>
         <form id="stream-form">
@@ -64,7 +94,8 @@
     </div>
     <script>
         document.getElementById('stream').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            div.style.display = div.style.display === 'grid' ? 'none' : 'grid';
         });
 
         document.getElementById('stream-form').addEventListener('submit', async ev => {
@@ -86,7 +117,9 @@
     </div>
     <script>
         document.getElementById('alsa').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('alsa-table', 'api/alsa');
         });
     </script>
@@ -123,7 +156,9 @@
         }
 
         document.getElementById('homekit').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await reloadHomeKit();
         });
 
@@ -168,7 +203,9 @@
     </div>
     <script>
         document.getElementById('dvrip').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('dvrip-table', 'api/dvrip');
         });
     </script>
@@ -180,7 +217,9 @@
     </div>
     <script>
         document.getElementById('devices').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('devices-table', 'api/ffmpeg/devices');
         });
     </script>
@@ -192,7 +231,9 @@
     </div>
     <script>
         document.getElementById('hardware').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('hardware-table', 'api/ffmpeg/hardware');
         });
     </script>
@@ -211,7 +252,8 @@
     </div>
     <script>
         document.getElementById('nest').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            div.style.display = div.style.display === 'grid' ? 'none' : 'grid';
         });
 
         document.getElementById('nest-form').addEventListener('submit', async ev => {
@@ -231,7 +273,9 @@
     </div>
     <script>
         document.getElementById('gopro').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('gopro-table', 'api/gopro');
         });
     </script>
@@ -243,7 +287,9 @@
     </div>
     <script>
         document.getElementById('hass').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('hass-table', 'api/hass');
         });
     </script>
@@ -259,7 +305,9 @@
     </div>
     <script>
         document.getElementById('onvif').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('onvif-table', 'api/onvif');
         });
 
@@ -293,7 +341,8 @@
     </div>
     <script>
         document.getElementById('ring').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            div.style.display = div.style.display === 'grid' ? 'none' : 'grid';
         });
 
         async function handleRingAuth(ev) {
@@ -349,7 +398,8 @@
     </div>
     <script>
         document.getElementById('tuya').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            div.style.display = div.style.display === 'grid' ? 'none' : 'grid';
         });
 
         document.getElementById('tuya-credentials-form').addEventListener('submit', async ev => {
@@ -389,7 +439,9 @@
     </div>
     <script>
         document.getElementById('roborock').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('roborock-table', 'api/roborock');
         });
 
@@ -407,8 +459,158 @@
     </div>
     <script>
         document.getElementById('v4l2').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('v4l2-table', 'api/v4l2');
+        });
+    </script>
+
+
+    <button id="wyze">Wyze</button>
+    <div>
+        <p style="margin: 5px 0; font-size: 12px; color: var(--text-muted);">
+            API Key required: <a href="https://support.wyze.com/hc/en-us/articles/16129834216731" target="_blank">Get your API Key</a>
+        </p>
+        <form id="wyze-login-form">
+            <input type="text" name="api_id" placeholder="API ID" required size="20">
+            <input type="text" name="api_key" placeholder="API Key" required size="36">
+            <input type="email" name="email" placeholder="email" required>
+            <input type="password" name="password" placeholder="password" required>
+            <button type="submit">login</button>
+        </form>
+        <form id="wyze-devices-form">
+            <select id="wyze-id" name="id" required></select>
+            <button type="submit">load devices</button>
+        </form>
+        <table id="wyze-table"></table>
+    </div>
+    <script>
+        async function wyzeReload(ev) {
+            if (ev) {
+                const div = ev.target.nextElementSibling;
+                if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+                div.style.display = 'grid';
+            }
+
+            const r = await fetch('api/wyze', {'cache': 'no-cache'});
+            const data = await r.json();
+            const users = document.getElementById('wyze-id');
+            users.innerHTML = data.map(item => `<option value="${item}">${item}</option>`).join('');
+        }
+
+        document.getElementById('wyze').addEventListener('click', wyzeReload);
+
+        document.getElementById('wyze-login-form').addEventListener('submit', async ev => {
+            ev.preventDefault();
+
+            const table = document.getElementById('wyze-table');
+            table.innerText = 'loading...';
+
+            const params = new URLSearchParams(new FormData(ev.target));
+            const r = await fetch('api/wyze', {method: 'POST', body: params});
+
+            if (!r.ok) {
+                table.innerText = (await r.text()) || 'Unknown error';
+                return;
+            }
+
+            const data = await r.json();
+            table.innerText = '';
+            drawTable(table, data);
+            wyzeReload();
+        });
+
+        document.getElementById('wyze-devices-form').addEventListener('submit', async ev => {
+            ev.preventDefault();
+            const params = new URLSearchParams(new FormData(ev.target));
+            await getSources('wyze-table', 'api/wyze?' + params.toString());
+        });
+    </script>
+
+
+    <button id="xiaomi">Xiaomi</button>
+    <div>
+        <form id="xiaomi-login-form">
+            <input type="text" name="username" placeholder="username" required>
+            <input type="password" name="password" placeholder="password" required>
+            <button type="submit">login</button>
+        </form>
+        <form id="xiaomi-captcha-form">
+            <img id="xiaomi-captcha">
+            <input type="text" name="captcha" placeholder="captcha" required size="10">
+            <button type="submit">send</button>
+        </form>
+        <form id="xiaomi-verify-form">
+            <label id="xiaomi-verify"></label>
+            <input type="text" name="verify" placeholder="verify" required size="10">
+            <button type="submit">send</button>
+        </form>
+        <form id="xiaomi-devices-form">
+            <select id="xiaomi-id" name="id" required></select>
+            <select name="region" required>
+                <option value="cn">China</option>
+                <option value="de">Europe</option>
+                <option value="i2">India</option>
+                <option value="ru">Russia</option>
+                <option value="sg">Singapore</option>
+                <option value="us">United States</option>
+            </select>
+            <button type="submit">load devices</button>
+        </form>
+        <table id="xiaomi-table"></table>
+    </div>
+    <script>
+        async function xiaomiReload(ev) {
+            if (ev) {
+                const div = ev.target.nextElementSibling;
+                if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+                div.style.display = 'grid';
+            }
+
+            document.getElementById('xiaomi-login-form').style.display = 'flex';
+            document.getElementById('xiaomi-captcha-form').style.display = 'none';
+            document.getElementById('xiaomi-verify-form').style.display = 'none';
+
+            const r = await fetch('api/xiaomi', {'cache': 'no-cache'});
+            const data = await r.json();
+            const users = document.getElementById('xiaomi-id');
+            users.innerHTML = data.map(item => `<option value="${item}">${item}</option>`).join('');
+        }
+
+        document.getElementById('xiaomi').addEventListener('click', xiaomiReload);
+
+        async function xiaomiLogin(ev) {
+            ev.preventDefault();
+            const params = new URLSearchParams(new FormData(ev.target));
+            const r = await fetch('api/xiaomi', {method: 'POST', body: params});
+            if (r.status === 401) {
+                /** @type {{captcha: string, verify_email: string, verify_phone: string}} */
+                const data = await r.json();
+                document.getElementById('xiaomi-login-form').style.display = 'none';
+                if (data.captcha) {
+                    document.getElementById('xiaomi-captcha-form').style.display = 'flex';
+                    document.getElementById('xiaomi-captcha').src = 'data:image/jpeg;base64,' + data.captcha;
+                } else {
+                    document.getElementById('xiaomi-verify-form').style.display = 'flex';
+                    document.getElementById('xiaomi-verify').innerText = data.verify_email || data.verify_phone;
+                }
+            } else if (r.ok) {
+                alert('OK');
+                xiaomiReload();
+            } else {
+                alert('ERROR: ' + await r.text());
+            }
+        }
+
+        document.getElementById('xiaomi-login-form').addEventListener('submit', xiaomiLogin);
+        document.getElementById('xiaomi-captcha-form').addEventListener('submit', xiaomiLogin);
+        document.getElementById('xiaomi-verify-form').addEventListener('submit', xiaomiLogin);
+
+        document.getElementById('xiaomi-devices-form').addEventListener('submit', async ev => {
+            ev.preventDefault();
+            const params = new URLSearchParams(new FormData(ev.target));
+            await getSources('xiaomi-table', 'api/xiaomi?' + params.toString());
         });
     </script>
 
@@ -419,7 +621,9 @@
     </div>
     <script>
         document.getElementById('webtorrent').addEventListener('click', async ev => {
-            ev.target.nextElementSibling.style.display = 'grid';
+            const div = ev.target.nextElementSibling;
+            if (div.style.display === 'grid') { div.style.display = 'none'; return; }
+            div.style.display = 'grid';
             await getSources('webtorrent-table', 'api/webtorrent');
         });
     </script>

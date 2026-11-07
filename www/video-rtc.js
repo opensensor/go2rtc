@@ -1,3 +1,5 @@
+import {WebCodecsPlayer} from './video-webcodecs.js';
+
 /**
  * VideoRTC v1.6.0 - Video player for go2rtc streaming application.
  *
@@ -33,10 +35,17 @@ export class VideoRTC extends HTMLElement {
         ];
 
         /**
-         * [config] Supported modes (webrtc, webrtc/tcp, mse, hls, mp4, mjpeg).
+         * [config] Supported modes (webrtc, webrtc/tcp, mse, hls, mp4, mjpeg, webcodecs).
          * @type {string}
          */
         this.mode = 'webrtc,mse,hls,mjpeg';
+
+        /**
+         * [config] Renderer cascade for WebCodecs (webgpu, webgl, 2d).
+         * Order defines priority. Default: try all in order.
+         * @type {string}
+         */
+        this.renderer = 'webgpu,webgl,2d';
 
         /**
          * [Config] Requested medias (video, audio, microphone).
@@ -71,7 +80,7 @@ export class VideoRTC extends HTMLElement {
          */
         this.pcConfig = {
             bundlePolicy: 'max-bundle',
-            iceServers: [{urls: 'stun:stun.l.google.com:19302'}],
+            iceServers: [{urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302']}],
             sdpSemantics: 'unified-plan',  // important for Chromecast 1
         };
 
@@ -249,7 +258,22 @@ export class VideoRTC extends HTMLElement {
         this.appendChild(this.video);
 
         this.video.addEventListener('error', ev => {
-            console.warn(ev);
+            const err = this.video.error;
+            // https://developer.mozilla.org/en-US/docs/Web/API/MediaError/code
+            const MEDIA_ERRORS = {
+                1: 'MEDIA_ERR_ABORTED',
+                2: 'MEDIA_ERR_NETWORK',
+                3: 'MEDIA_ERR_DECODE',
+                4: 'MEDIA_ERR_SRC_NOT_SUPPORTED'
+            };
+            console.error('[VideoRTC] Video error:', {
+                error: err ? MEDIA_ERRORS[err.code] : 'unknown',
+                message: err ? err.message : 'unknown',
+                codecs: this.mseCodecs || 'not set',
+                readyState: this.video.readyState,
+                networkState: this.video.networkState,
+                currentTime: this.video.currentTime
+            });
             if (this.ws) this.ws.close(); // run reconnect for broken MSE stream
         });
 
@@ -323,6 +347,13 @@ export class VideoRTC extends HTMLElement {
             this.pc = null;
         }
 
+        // cleanup WebCodecs resources
+        if (this._wc) {
+            this._wc.destroy();
+            this._wc = null;
+        }
+        this.video.style.display = 'block';
+
         this.video.src = '';
         this.video.srcObject = null;
     }
@@ -350,7 +381,10 @@ export class VideoRTC extends HTMLElement {
 
         const modes = [];
 
-        if (this.mode.includes('mse') && ('MediaSource' in window || 'ManagedMediaSource' in window)) {
+        if (this.mode.includes('webcodecs') && 'VideoDecoder' in window) {
+            modes.push('webcodecs');
+            this.onwebcodecs();
+        } else if (this.mode.includes('mse') && ('MediaSource' in window || 'ManagedMediaSource' in window)) {
             modes.push('mse');
             this.onmse();
         } else if (this.mode.includes('hls') && this.video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -484,6 +518,35 @@ export class VideoRTC extends HTMLElement {
                 }
             };
         };
+    }
+
+    onwebcodecsready() {}
+
+    onwebcodecserror(error) {}
+
+    onwebcodecs() {
+        this._wc = new WebCodecsPlayer(this, {
+            cascade: this.renderer,
+            media: this.media,
+        });
+
+        this.onmessage['webcodecs'] = msg => {
+            if (msg.type !== 'webcodecs') return;
+            this._wc.init(msg.value).then(result => {
+                if (result.error) {
+                    this.onwebcodecserror(result.error);
+                } else {
+                    this.video.style.display = 'none';
+                    this.onwebcodecsready();
+                }
+            });
+        };
+
+        this.ondata = data => {
+            if (this._wc) this._wc.feed(data);
+        };
+
+        this.send({type: 'webcodecs', value: ''});
     }
 
     onwebrtc() {
