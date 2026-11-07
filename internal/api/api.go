@@ -15,24 +15,26 @@ import (
 	"time"
 
 	"github.com/AlexxIT/go2rtc/internal/app"
+	"github.com/AlexxIT/go2rtc/internal/mediaauth"
 	"github.com/rs/zerolog"
 )
 
 func Init() {
 	var cfg struct {
 		Mod struct {
-			Listen     string `yaml:"listen"`
-			Username   string `yaml:"username"`
-			Password   string `yaml:"password"`
-			LocalAuth  bool   `yaml:"local_auth"`
-			BasePath   string `yaml:"base_path"`
-			StaticDir  string `yaml:"static_dir"`
-			Origin     string `yaml:"origin"`
-			TLSListen  string `yaml:"tls_listen"`
-			TLSCert    string `yaml:"tls_cert"`
-			TLSKey     string `yaml:"tls_key"`
-			UnixListen string `yaml:"unix_listen"`
-			ReadOnly   bool   `yaml:"read_only"`
+			Listen             string `yaml:"listen"`
+			Username           string `yaml:"username"`
+			Password           string `yaml:"password"`
+			LocalAuth          bool   `yaml:"local_auth"`
+			BasePath           string `yaml:"base_path"`
+			StaticDir          string `yaml:"static_dir"`
+			Origin             string `yaml:"origin"`
+			TLSListen          string `yaml:"tls_listen"`
+			TLSCert            string `yaml:"tls_cert"`
+			TLSKey             string `yaml:"tls_key"`
+			UnixListen         string `yaml:"unix_listen"`
+			ReadOnly           bool   `yaml:"read_only"`
+			MediaAuthorityPort int    `yaml:"media_authority_port"`
 
 			AllowPaths []string `yaml:"allow_paths"`
 		} `yaml:"api"`
@@ -52,6 +54,7 @@ func Init() {
 	basePath = cfg.Mod.BasePath
 	log = app.GetLogger("api")
 	ReadOnly = cfg.Mod.ReadOnly
+	mediaauth.Port = cfg.Mod.MediaAuthorityPort
 	app.ConfigReadOnly = ReadOnly
 	app.Info["read_only"] = ReadOnly
 

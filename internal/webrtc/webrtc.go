@@ -4,10 +4,12 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/AlexxIT/go2rtc/internal/api"
 	"github.com/AlexxIT/go2rtc/internal/api/ws"
 	"github.com/AlexxIT/go2rtc/internal/app"
+	"github.com/AlexxIT/go2rtc/internal/mediaauth"
 	"github.com/AlexxIT/go2rtc/internal/streams"
 	"github.com/AlexxIT/go2rtc/pkg/core"
 	"github.com/AlexxIT/go2rtc/pkg/webrtc"
@@ -115,6 +117,10 @@ var log zerolog.Logger
 var PeerConnection func(active bool) (*pion.PeerConnection, error)
 
 func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
+	lease, err := mediaauth.Acquire(tr.Request)
+	if err != nil {
+		return err
+	}
 	var stream *streams.Stream
 	var mode core.Mode
 
@@ -162,10 +168,12 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 		return err
 	}
 
-	var sendAnswer core.Waiter
+	sendAnswer := make(chan struct{})
+	var answerOnce sync.Once
+	answerSent := func() { answerOnce.Do(func() { close(sendAnswer) }) }
 
 	// protect from blocking on errors
-	defer sendAnswer.Done(nil)
+	defer answerSent()
 
 	conn := webrtc.NewConn(pc)
 	conn.Mode = mode
@@ -188,7 +196,7 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 			if !FilterCandidate(msg) {
 				return
 			}
-			_ = sendAnswer.Wait()
+			<-sendAnswer
 
 			s := msg.ToJSON().Candidate
 			log.Trace().Str("candidate", s).Msg("[webrtc] local ")
@@ -200,10 +208,19 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 
 	// 1. SetOffer, so we can get remote client codecs
 	if err = conn.SetOffer(offer.SDP); err != nil {
+		_ = conn.Close()
 		log.Warn().Err(err).Caller().Send()
 		return err
 	}
 
+	conn.Medias = lease.Filter(conn.Medias)
+	stopLease := lease.Watch(func() { _ = conn.Close() })
+	conn.Listen(func(event any) {
+		if state, ok := event.(pion.PeerConnectionState); ok && state == pion.PeerConnectionStateClosed {
+			stopLease()
+		}
+	})
+	tr.OnClose(func() { stopLease(); _ = conn.Close() })
 	switch mode {
 	case core.ModePassiveConsumer:
 		// 2. AddConsumer, so we get new tracks
@@ -221,6 +238,7 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 	log.Trace().Msgf("[webrtc] answer\n%s", answer)
 
 	if err != nil {
+		_ = conn.Close()
 		log.Error().Err(err).Caller().Send()
 		return err
 	}
@@ -232,7 +250,7 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 		tr.Write(&ws.Message{Type: "webrtc/answer", Value: answer})
 	}
 
-	sendAnswer.Done(nil)
+	answerSent()
 
 	asyncCandidates(tr, conn)
 
@@ -240,6 +258,9 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 }
 
 func ExchangeSDP(stream *streams.Stream, offer, desc, userAgent string) (answer string, err error) {
+	return exchangeSDP(stream, offer, desc, userAgent, nil)
+}
+func exchangeSDP(stream *streams.Stream, offer, desc, userAgent string, lease *mediaauth.Lease) (answer string, err error) {
 	pc, err := PeerConnection(false)
 	if err != nil {
 		log.Error().Err(err).Caller().Send()
@@ -269,11 +290,19 @@ func ExchangeSDP(stream *streams.Stream, offer, desc, userAgent string) (answer 
 	log.Trace().Msgf("[webrtc] offer:\n%s", offer)
 
 	if err = conn.SetOffer(offer); err != nil {
+		_ = conn.Close()
 		log.Warn().Err(err).Caller().Send()
 		return
 	}
 
-	if IsConsumer(conn) {
+	conn.Medias = lease.Filter(conn.Medias)
+	stopLease := lease.Watch(func() { _ = conn.Close() })
+	conn.Listen(func(event any) {
+		if state, ok := event.(pion.PeerConnectionState); ok && state == pion.PeerConnectionStateClosed {
+			stopLease()
+		}
+	})
+	if lease != nil || IsConsumer(conn) {
 		conn.Mode = core.ModePassiveConsumer
 
 		// 2. AddConsumer, so we get new tracks
@@ -292,6 +321,7 @@ func ExchangeSDP(stream *streams.Stream, offer, desc, userAgent string) (answer 
 	log.Trace().Msgf("[webrtc] answer\n%s", answer)
 
 	if err != nil {
+		_ = conn.Close()
 		log.Error().Err(err).Caller().Send()
 	}
 

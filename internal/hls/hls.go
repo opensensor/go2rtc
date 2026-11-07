@@ -8,6 +8,7 @@ import (
 	"github.com/AlexxIT/go2rtc/internal/api"
 	"github.com/AlexxIT/go2rtc/internal/api/ws"
 	"github.com/AlexxIT/go2rtc/internal/app"
+	"github.com/AlexxIT/go2rtc/internal/mediaauth"
 	"github.com/AlexxIT/go2rtc/internal/streams"
 	"github.com/AlexxIT/go2rtc/pkg/core"
 	"github.com/AlexxIT/go2rtc/pkg/mp4"
@@ -56,6 +57,14 @@ func handlerStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lease, err := mediaauth.Acquire(r)
+	if err != nil {
+		http.Error(w, "Media authority denied", http.StatusForbidden)
+		return
+	}
+	if lease != nil {
+		w.Header().Set(mediaauth.PolicyHeader, "1")
+	}
 	var cons core.Consumer
 
 	// use fMP4 with codecs filter and TS without
@@ -64,11 +73,13 @@ func handlerStream(w http.ResponseWriter, r *http.Request) {
 		c := mp4.NewConsumer(medias)
 		c.FormatName = "hls/fmp4"
 		c.WithRequest(r)
+		c.Medias = lease.Filter(c.Medias)
 		cons = c
 	} else {
 		c := mpegts.NewConsumer()
 		c.FormatName = "hls/mpegts"
 		c.WithRequest(r)
+		c.Medias = lease.Filter(c.Medias)
 		cons = c
 	}
 
@@ -78,13 +89,17 @@ func handlerStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session := NewSession(cons)
-	session.alive = time.AfterFunc(keepalive, func() {
-		sessionsMu.Lock()
-		delete(sessions, session.id)
-		sessionsMu.Unlock()
-
-		stream.RemoveConsumer(cons)
-	})
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			sessionsMu.Lock()
+			delete(sessions, session.id)
+			sessionsMu.Unlock()
+			stream.RemoveConsumer(cons)
+		})
+	}
+	stopLease := lease.Watch(cleanup)
+	session.alive = time.AfterFunc(keepalive, func() { stopLease(); cleanup() })
 
 	sessionsMu.Lock()
 	sessions[session.id] = session
