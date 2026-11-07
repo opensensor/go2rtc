@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AlexxIT/go2rtc/pkg/core"
@@ -22,6 +23,7 @@ type Conn struct {
 
 	offer  string
 	closed core.Waiter
+	sendMu sync.Mutex
 }
 
 func NewConn(pc *webrtc.PeerConnection) *Conn {
@@ -207,7 +209,7 @@ func (c *Conn) getMediaCodec(remote *webrtc.TrackRemote) (*core.Media, *core.Cod
 	// fix moment when core.ModePassiveProducer or core.ModeActiveProducer
 	// sends new codec with new payload type to same media
 	// check GetTrack
-	panic(core.Caller())
+	return nil, nil // A policy-filtered/unknown MID must never become a backchannel.
 }
 
 func sanitizeIP6(host string) string {

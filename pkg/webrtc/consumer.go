@@ -41,7 +41,9 @@ func (c *Conn) AddTrack(media *core.Media, codec *core.Codec, track *core.Receiv
 
 	sender := core.NewSender(media, codec)
 	sender.Handler = func(packet *rtp.Packet) {
+		c.sendMu.Lock()
 		c.Send += packet.MarshalSize()
+		c.sendMu.Unlock()
 		//important to send with remote PayloadType
 		_ = localTrack.WriteRTP(payloadType, packet)
 	}

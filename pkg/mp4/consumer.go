@@ -69,6 +69,8 @@ func (c *Consumer) AddTrack(media *core.Media, _ *core.Codec, track *core.Receiv
 	switch track.Codec.Name {
 	case core.CodecH264:
 		handler.Handler = func(packet *rtp.Packet) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
 			if !c.start {
 				if !h264.IsKeyframe(packet.Payload) {
 					return
@@ -76,13 +78,10 @@ func (c *Consumer) AddTrack(media *core.Media, _ *core.Codec, track *core.Receiv
 				c.start = true
 			}
 
-			// important to use Mutex because right fragment order
-			c.mu.Lock()
 			b := c.muxer.GetPayload(trackID, packet)
 			if n, err := c.wr.Write(b); err == nil {
 				c.Send += n
 			}
-			c.mu.Unlock()
 		}
 
 		if track.Codec.IsRTP() {
@@ -93,6 +92,8 @@ func (c *Consumer) AddTrack(media *core.Media, _ *core.Codec, track *core.Receiv
 
 	case core.CodecH265:
 		handler.Handler = func(packet *rtp.Packet) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
 			if !c.start {
 				if !h265.IsKeyframe(packet.Payload) {
 					return
@@ -100,13 +101,10 @@ func (c *Consumer) AddTrack(media *core.Media, _ *core.Codec, track *core.Receiv
 				c.start = true
 			}
 
-			// important to use Mutex because right fragment order
-			c.mu.Lock()
 			b := c.muxer.GetPayload(trackID, packet)
 			if n, err := c.wr.Write(b); err == nil {
 				c.Send += n
 			}
-			c.mu.Unlock()
 		}
 
 		if track.Codec.IsRTP() {
@@ -117,17 +115,16 @@ func (c *Consumer) AddTrack(media *core.Media, _ *core.Codec, track *core.Receiv
 
 	default:
 		handler.Handler = func(packet *rtp.Packet) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
 			if !c.start {
 				return
 			}
 
-			// important to use Mutex because right fragment order
-			c.mu.Lock()
 			b := c.muxer.GetPayload(trackID, packet)
 			if n, err := c.wr.Write(b); err == nil {
 				c.Send += n
 			}
-			c.mu.Unlock()
 		}
 
 		switch track.Codec.Name {
@@ -166,7 +163,9 @@ func (c *Consumer) AddTrack(media *core.Media, _ *core.Codec, track *core.Receiv
 
 func (c *Consumer) WriteTo(wr io.Writer) (int64, error) {
 	if len(c.Senders) == 1 && c.Senders[0].Codec.IsAudio() {
+		c.mu.Lock()
 		c.start = true
+		c.mu.Unlock()
 	}
 
 	init, err := c.muxer.GetInit()

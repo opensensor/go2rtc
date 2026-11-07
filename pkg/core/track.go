@@ -27,6 +27,8 @@ func NewReceiver(media *Media, codec *Codec) *Receiver {
 		Media: media,
 	}
 	r.Input = func(packet *Packet) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
 		r.Bytes += len(packet.Payload)
 		r.Packets++
 		for _, child := range r.childs {
@@ -43,6 +45,8 @@ func (r *Receiver) WriteRTP(packet *rtp.Packet) {
 
 // Deprecated: should be removed
 func (r *Receiver) Senders() []*Sender {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if len(r.childs) > 0 {
 		return []*Sender{{}}
 	} else {
