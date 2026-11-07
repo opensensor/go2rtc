@@ -4,7 +4,7 @@
 # only debian 13 (trixie) has latest ffmpeg
 # https://packages.debian.org/trixie/ffmpeg
 ARG DEBIAN_VERSION="trixie-slim"
-ARG GO_VERSION="1.26-bookworm"
+ARG GO_VERSION="1.27-trixie"
 
 
 # 1. Build go2rtc binary
@@ -64,6 +64,6 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 VOLUME /config
 WORKDIR /config
 # https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(Native-GPU-Support)
-ENV NVIDIA_VISIBLE_DEVICES all
-ENV NVIDIA_DRIVER_CAPABILITIES compute,video,utility
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 
