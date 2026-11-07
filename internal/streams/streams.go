@@ -23,12 +23,18 @@ func Init() {
 	log = app.GetLogger("streams")
 
 	for name, item := range cfg.Streams {
-		streams[name] = NewStream(item)
+		stream, err := configStream(item)
+		if err != nil {
+			log.Error().Err(err).Str("stream", name).Msg("[streams] rejected config source")
+			continue
+		}
+		streams[name] = stream
 	}
 
 	api.HandleFunc("api/streams", apiStreams)
 	api.HandleFunc("api/streams.dot", apiStreamsDOT)
 	api.HandleFunc("api/preload", apiPreload)
+	api.HandleFunc("api/reload", apiReload)
 	api.HandleFunc("api/schemes", apiSchemes)
 
 	if cfg.Publish == nil && cfg.Preload == nil {
@@ -43,8 +49,8 @@ func Init() {
 			}
 		}
 		for name, rawQuery := range cfg.Preload {
-			if stream := Get(name); stream != nil {
-				Preload(stream, rawQuery)
+			if err := AddPreload(name, rawQuery); err != nil {
+				log.Error().Err(err).Caller().Send()
 			}
 		}
 	})
@@ -173,4 +179,39 @@ func GetAllSources() map[string][]string {
 	}
 	streamsMu.Unlock()
 	return sources
+}
+
+// Validate all supported YAML stream forms before constructing producers.
+func configStream(item any) (*Stream, error) {
+	switch value := item.(type) {
+	case string:
+		if err := Validate(value); err != nil {
+			return nil, err
+		}
+	case []string:
+		for _, source := range value {
+			if err := Validate(source); err != nil {
+				return nil, err
+			}
+		}
+	case []any:
+		for _, source := range value {
+			if source == nil {
+				continue
+			}
+			text, ok := source.(string)
+			if !ok {
+				return nil, errors.New("streams: expected string source")
+			}
+			if err := Validate(text); err != nil {
+				return nil, err
+			}
+		}
+	case map[string]any:
+		return configStream(value["url"])
+	case nil:
+	default:
+		return nil, errors.New("streams: invalid config source")
+	}
+	return NewStream(item), nil
 }

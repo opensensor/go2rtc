@@ -17,8 +17,11 @@ type Command struct {
 }
 
 func NewCommand(s string) *Command {
+	return NewCommandArgs(QuoteSplit(s))
+}
+
+func NewCommandArgs(args []string) *Command {
 	ctx, cancel := context.WithCancel(context.Background())
-	args := QuoteSplit(s)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.SysProcAttr = procAttr
 	return &Command{cmd, ctx, cancel, nil}

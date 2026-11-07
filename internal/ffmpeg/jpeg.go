@@ -9,22 +9,20 @@ import (
 	"github.com/AlexxIT/go2rtc/internal/ffmpeg/hardware"
 	"github.com/AlexxIT/go2rtc/pkg/core"
 	"github.com/AlexxIT/go2rtc/pkg/ffmpeg"
-	"github.com/AlexxIT/go2rtc/pkg/shell"
 )
 
 func JPEGWithQuery(b []byte, query url.Values) ([]byte, error) {
 	args := parseQuery(query)
-	return transcode(b, args.String())
+	return transcode(b, args.Argv())
 }
 
 func JPEGWithScale(b []byte, width, height int) ([]byte, error) {
 	args := defaultArgs()
 	args.AddFilter(fmt.Sprintf("scale=%d:%d", width, height))
-	return transcode(b, args.String())
+	return transcode(b, args.Argv())
 }
 
-func transcode(b []byte, args string) ([]byte, error) {
-	cmdArgs := shell.QuoteSplit(args)
+func transcode(b []byte, cmdArgs []string) ([]byte, error) {
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	cmd.Stdin = bytes.NewBuffer(b)
 	return cmd.Output()

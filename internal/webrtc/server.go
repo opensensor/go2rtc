@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AlexxIT/go2rtc/internal/api"
+	"github.com/AlexxIT/go2rtc/internal/mediaauth"
 	"github.com/AlexxIT/go2rtc/internal/streams"
 	"github.com/AlexxIT/go2rtc/pkg/core"
 	"github.com/AlexxIT/go2rtc/pkg/webrtc"
@@ -21,6 +22,14 @@ const MimeSDP = "application/sdp"
 var sessions = map[string]*webrtc.Conn{}
 
 func syncHandler(w http.ResponseWriter, r *http.Request) {
+	if api.IsReadOnly() {
+		switch r.Method {
+		case "POST", "PATCH", "DELETE":
+			api.ReadOnlyError(w)
+			return
+		}
+	}
+
 	switch r.Method {
 	case "POST":
 		query := r.URL.Query()
@@ -124,7 +133,15 @@ func outputWebRTC(w http.ResponseWriter, r *http.Request) {
 		desc = "webrtc/post"
 	}
 
-	answer, err := ExchangeSDP(stream, offer, desc, r.UserAgent())
+	lease, err := mediaauth.Acquire(r)
+	if err != nil {
+		http.Error(w, "Media authority denied", http.StatusForbidden)
+		return
+	}
+	answer, err := exchangeSDP(stream, offer, desc, r.UserAgent(), lease)
+	if lease != nil {
+		w.Header().Set(mediaauth.PolicyHeader, "1")
+	}
 	if err != nil {
 		log.Error().Err(err).Caller().Send()
 		http.Error(w, err.Error(), http.StatusInternalServerError)

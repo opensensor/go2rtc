@@ -12,6 +12,13 @@ import (
 
 func apiStreams(w http.ResponseWriter, r *http.Request) {
 	w = creds.SecretResponse(w)
+	if api.IsReadOnly() {
+		switch r.Method {
+		case "PUT", "PATCH", "POST", "DELETE":
+			api.ReadOnlyError(w)
+			return
+		}
+	}
 
 	query := r.URL.Query()
 	src := query.Get("src")
@@ -98,7 +105,17 @@ func apiStreams(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "DELETE":
+		// Remove from the registry first so no new connections can be made,
+		// then stop the stream to close existing RTSP source connections and
+		// any active WebRTC/HLS consumer sessions.
+		streamsMu.Lock()
+		stream := streams[src]
 		delete(streams, src)
+		streamsMu.Unlock()
+
+		if stream != nil {
+			stream.Stop()
+		}
 
 		if err := app.PatchConfig([]string{"streams", src}, nil); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -130,15 +147,21 @@ func apiStreamsDOT(w http.ResponseWriter, r *http.Request) {
 }
 
 func apiPreload(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	src := query.Get("src")
-
-	// check if stream exists
-	stream := Get(src)
-	if stream == nil {
-		http.Error(w, "", http.StatusNotFound)
+	if api.IsReadOnly() {
+		switch r.Method {
+		case "PUT", "DELETE":
+			api.ReadOnlyError(w)
+			return
+		}
+	}
+	// GET - return all preloads
+	if r.Method == "GET" {
+		api.ResponseJSON(w, GetPreloads())
 		return
 	}
+
+	query := r.URL.Query()
+	src := query.Get("src")
 
 	switch r.Method {
 	case "PUT":
@@ -153,7 +176,7 @@ func apiPreload(w http.ResponseWriter, r *http.Request) {
 
 		rawQuery := query.Encode()
 
-		if err := AddPreload(stream, rawQuery); err != nil {
+		if err := AddPreload(src, rawQuery); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -163,7 +186,7 @@ func apiPreload(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "DELETE":
-		if err := DelPreload(stream); err != nil {
+		if err := DelPreload(src); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -177,6 +200,38 @@ func apiPreload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func apiReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if api.IsReadOnly() {
+		api.ReadOnlyError(w)
+		return
+	}
+
+	src := r.URL.Query().Get("src")
+	if src == "" {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+
+	stream := Get(src)
+	if stream == nil {
+		http.Error(w, "", http.StatusNotFound)
+		return
+	}
+
+	stream.Stop()
+	api.ResponseJSON(w, map[string]string{
+		"src":    src,
+		"status": "reloaded",
+	})
+}
+
 func apiSchemes(w http.ResponseWriter, r *http.Request) {
+	// Wait until all module Init() calls finish in main.
+	WaitReady()
 	api.ResponseJSON(w, SupportedSchemes())
 }

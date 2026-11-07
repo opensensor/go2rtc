@@ -2,6 +2,7 @@ package mpegts
 
 import (
 	"io"
+	"sync"
 
 	"github.com/AlexxIT/go2rtc/pkg/aac"
 	"github.com/AlexxIT/go2rtc/pkg/core"
@@ -14,6 +15,7 @@ type Consumer struct {
 	core.Connection
 	muxer *Muxer
 	wr    *core.WriteBuffer
+	mu    sync.Mutex
 }
 
 func NewConsumer() *Consumer {
@@ -44,6 +46,7 @@ func NewConsumer() *Consumer {
 		},
 		NewMuxer(),
 		wr,
+		sync.Mutex{},
 	}
 }
 
@@ -55,6 +58,8 @@ func (c *Consumer) AddTrack(media *core.Media, codec *core.Codec, track *core.Re
 		pid := c.muxer.AddTrack(StreamTypeH264)
 
 		sender.Handler = func(pkt *rtp.Packet) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
 			b := c.muxer.GetPayload(pid, pkt.Timestamp, pkt.Payload)
 			if n, err := c.wr.Write(b); err == nil {
 				c.Send += n
@@ -71,6 +76,8 @@ func (c *Consumer) AddTrack(media *core.Media, codec *core.Codec, track *core.Re
 		pid := c.muxer.AddTrack(StreamTypeH265)
 
 		sender.Handler = func(pkt *rtp.Packet) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
 			b := c.muxer.GetPayload(pid, pkt.Timestamp, pkt.Payload)
 			if n, err := c.wr.Write(b); err == nil {
 				c.Send += n
@@ -88,6 +95,8 @@ func (c *Consumer) AddTrack(media *core.Media, codec *core.Codec, track *core.Re
 		dt := 90000 / float64(track.Codec.ClockRate)
 
 		sender.Handler = func(pkt *rtp.Packet) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
 			pts := uint32(float64(pkt.Timestamp) * dt)
 			b := c.muxer.GetPayload(pid, pts, pkt.Payload)
 			if n, err := c.wr.Write(b); err == nil {

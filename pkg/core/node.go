@@ -62,11 +62,17 @@ func (n *Node) Close() {
 	if parent := n.parent; parent != nil {
 		parent.RemoveChild(n)
 
-		if len(parent.childs) == 0 {
+		parent.mu.Lock()
+		empty := len(parent.childs) == 0
+		parent.mu.Unlock()
+		if empty {
 			parent.Close()
 		}
 	} else {
-		for _, childs := range n.childs {
+		n.mu.Lock()
+		children := append([]*Node(nil), n.childs...)
+		n.mu.Unlock()
+		for _, childs := range children {
 			childs.Close()
 		}
 	}
